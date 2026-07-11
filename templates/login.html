@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logowanie - konfiguracja</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="login-box">
+    <h2>🔒 Konfiguracja</h2>
+    {% if error %}<p class="error">{{ error }}</p>{% endif %}
+    <form method="post">
+      <label>Hasło:</label>
+      <input type="password" name="password" autofocus required>
+      <button type="submit" class="button">Zaloguj</button>
+    </form>
+    <p><a href="/">← Wróć do podglądu</a></p>
+  </div>
+</body>
+</html>

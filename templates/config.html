@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Konfiguracja - Monitor cukru</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <h1>⚙️ Konfiguracja</h1>
+    <div class="topbar-right">
+      <a href="/">← Podgląd</a>
+      <a href="/config/logout">Wyloguj</a>
+    </div>
+  </header>
+
+  <div class="config-wrap">
+    {% if message %}<div class="flash">{{ message }}</div>{% endif %}
+
+    <section class="panel">
+      <h2>1. Dodaj dziecko</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="add_patient">
+        <label>Imię i nazwisko / pseudonim:</label>
+        <input type="text" name="name" required placeholder="np. Jan Kowalski">
+
+        <label>Źródło danych:</label>
+        <select name="source" id="source-select" onchange="toggleSource()">
+          <option value="dexcom">Dexcom</option>
+          <option value="librelinkup">LibreLinkUp (FreeStyle Libre)</option>
+          <option value="nightscout">Nightscout</option>
+          <option value="carelink">CareLink (Medtronic Guardian 4)</option>
+        </select>
+
+        <div id="dexcom-fields">
+          <label>Login Dexcom:</label>
+          <input type="text" name="login">
+          <label>Hasło Dexcom:</label>
+          <input type="text" name="password">
+          <label>Region konta (zwykle "ous" dla Polski/Europy, "us" dla USA):</label>
+          <input type="text" name="region" value="ous">
+        </div>
+
+        <div id="nightscout-fields" style="display:none;">
+          <label>Adres URL Nightscout:</label>
+          <input type="text" name="nightscout_url" placeholder="https://twoj-nightscout.herokuapp.com">
+          <label>Token dostępu (jeśli wymagany, w innym wypadku zostaw puste):</label>
+          <input type="text" name="nightscout_token" placeholder="np. imie-abc123token">
+        </div>
+
+        <div id="librelinkup-fields" style="display:none;">
+          <label>E-mail LibreLinkUp:</label>
+          <input type="text" name="librelinkup_email" placeholder="np. rodzic@przyklad.com">
+          <label>Hasło LibreLinkUp:</label>
+          <input type="text" name="librelinkup_password">
+          <label>Region konta:</label>
+          <select name="librelinkup_region">
+            <option value="eu">Europa (eu)</option>
+            <option value="de">Niemcy (de)</option>
+            <option value="fr">Francja (fr)</option>
+            <option value="us">USA (us)</option>
+            <option value="ca">Kanada (ca)</option>
+            <option value="au">Australia (au)</option>
+            <option value="ap">Azja/Pacyfik (ap)</option>
+            <option value="jp">Japonia (jp)</option>
+            <option value="ae">Emiraty (ae)</option>
+          </select>
+          <label>ID dziecka w LibreLinkUp (opcjonalnie - zostaw puste, jesli konto ma tylko jedno dziecko):</label>
+          <input type="text" name="librelinkup_patient_id" placeholder="opcjonalne">
+          <p class="hint">Konto LibreLinkUp musi wczesniej zaakceptowac zaproszenie do "obserwowania" od konta dziecka w aplikacji LibreLinkUp na telefonie.</p>
+        </div>
+
+        <div id="carelink-fields" style="display:none;">
+          <label>Ścieżka do pliku tokenu sesji CareLink (.json):</label>
+          <input type="text" name="carelink_token_file" placeholder="np. jasiu_carelink.json">
+          <p class="hint">Wpisz nazwę pliku znajdującego się w folderze aplikacji lub pełną ścieżkę bezwzględną. Token generujesz wcześniej zewnętrznym skryptem 2FA.</p>
+        </div>
+
+        <button type="submit" class="button">Dodaj</button>
+      </form>
+    </section>
+
+    <script>
+    function toggleSource() {
+      const src = document.getElementById('source-select').value;
+      document.getElementById('dexcom-fields').style.display = (src === 'dexcom') ? '' : 'none';
+      document.getElementById('nightscout-fields').style.display = (src === 'nightscout') ? '' : 'none';
+      document.getElementById('librelinkup-fields').style.display = (src === 'librelinkup') ? '' : 'none';
+      document.getElementById('carelink-fields').style.display = (src === 'carelink') ? '' : 'none';
+    }
+    </script>
+
+    <section class="panel">
+      <h2>2. Import z pliku .txt</h2>
+      <p class="hint">
+        Jedna linia = jedno dziecko.<br>
+        Dexcom: <code>login,haslo,imię_i_nazwisko</code> (opcjonalnie: <code>,region</code> na końcu)<br>
+        Nightscout: <code>nightscout,adres_url,token(może być puste),imię_i_nazwisko</code><br>
+        LibreLinkUp: <code>librelinkup,email,hasło,region,imię_i_nazwisko,id_dziecka(opcjonalnie)</code><br>
+        CareLink: <code>carelink,nazwa_lub_sciezka_pliku_tokenu,imię_i_nazwisko</code><br>
+        Przykład: <code>carelink,jasiu_token.json,Jan Kowalski</code>
+      </p>
+      <form method="post" enctype="multipart/form-data">
+        <input type="hidden" name="action" value="import_txt">
+        <input type="file" name="txt_file" accept=".txt" required>
+        <button type="submit" class="button">Importuj</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>3. Lista dzieci ({{ cfg.patients|length }})</h2>
+      {% if cfg.patients %}
+      <table class="patients-table">
+        <tr><th>Imię</th><th>Źródło</th><th>Identyfikator / URL / Plik</th><th>Region</th><th></th></tr>
+        {% for p in cfg.patients %}
+        <tr>
+          <td>{{ p.name }}</td>
+          <td>
+            {% if p.source == "nightscout" %}🌙 Nightscout
+            {% elif p.source == "librelinkup" %}📱 LibreLinkUp
+            {% elif p.source == "carelink" %}📟 CareLink
+            {% else %}📡 Dexcom{% endif %}
+          </td>
+          <td>
+            {% if p.source == "nightscout" %}{{ p.nightscout_url }}
+            {% elif p.source == "librelinkup" %}{{ p.librelinkup_email }}
+            {% elif p.source == "carelink" %}{{ p.carelink_token_file }}
+            {% else %}{{ p.login }}{% endif %}
+          </td>
+          <td>
+            {% if p.source == "librelinkup" %}{{ p.librelinkup_region }}
+            {% elif p.source == "nightscout" or p.source == "carelink" %}-
+            {% else %}{{ p.region }}{% endif %}
+          </td>
+          <td>
+            <form method="post" onsubmit="return confirm('Usunąć {{ p.name }}?');">
+              <input type="hidden" name="action" value="delete_patient">
+              <input type="hidden" name="patient_id" value="{{ p.id }}">
+              <button type="submit" class="button-small danger">Usuń</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </table>
+      {% else %}
+      <p class="hint">Brak dodanych dzieci.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>4. Wygląd i odświeżanie</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="save_layout">
+        <label>Liczba kolumn w siatce:</label>
+        <input type="number" name="columns" value="{{ cfg.columns }}" min="1" max="12">
+        <label>Szerokość okienka (px):</label>
+        <input type="number" name="window_width" value="{{ cfg.window_width }}" min="120" max="600">
+        <label>Wysokość okienka (px):</label>
+        <input type="number" name="window_height" value="{{ cfg.window_height }}" min="80" max="600">
+        <label>Co ile sekund pobierać nowe dane (min. 30):</label>
+        <input type="number" name="polling_interval_seconds" value="{{ cfg.polling_interval_seconds }}" min="30" max="600">
+        <button type="submit" class="button">Zapisz</button>
+      </form>
+    </section>
+
+    <section class="panel">
+      <h2>5. Alarmy dźwiękowe</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="save_alerts">
+        <label>Próg niskiego cukru (poniżej → czerwone okienko + alarm):</label>
+        <input type="number" name="threshold_low" value="{{ cfg.threshold_low }}" min="20" max="400">
+        <label>Próg wysokiego cukru (powyżej → czerwone okienko + alarm):</label>
+        <input type="number" name="threshold_high" value="{{ cfg.threshold_high }}" min="20" max="600">
+        <label>Co ile sekund powtarzać dźwięk, gdy alarm nadal trwa:</label>
+        <input type="number" name="alert_repeat_seconds" value="{{ cfg.alert_repeat_seconds }}" min="5" max="300">
+        <button type="submit" class="button">Zapisz progi</button>
+      </form>
+
+      <hr class="sep">
+
+      <h3>Dźwięk – niski cukier</h3>
+      <p class="hint">Aktualny plik: <code>{{ cfg.sound_low_file }}</code></p>
+      <audio controls preload="none" src="{{ url_for('static', filename='sounds/' + cfg.sound_low_file) }}"></audio>
+      <div class="sound-actions">
+        <form method="post" enctype="multipart/form-data" class="inline-form">
+          <input type="hidden" name="action" value="upload_sound">
+          <input type="hidden" name="which" value="low">
+          <input type="file" name="sound_file" accept=".wav,.mp3,.ogg" required>
+          <button type="submit" class="button-small">Wgraj nowy</button>
+        </form>
+        <form method="post" class="inline-form">
+          <input type="hidden" name="action" value="reset_sound">
+          <input type="hidden" name="which" value="low">
+          <button type="submit" class="button-small">Przywróć domyślny</button>
+        </form>
+      </div>
+
+      <h3>Dźwięk – wysoki cukier</h3>
+      <p class="hint">Aktualny plik: <code>{{ cfg.sound_high_file }}</code></p>
+      <audio controls preload="none" src="{{ url_for('static', filename='sounds/' + cfg.sound_high_file) }}"></audio>
+      <div class="sound-actions">
+        <form method="post" enctype="multipart/form-data" class="inline-form">
+          <input type="hidden" name="action" value="upload_sound">
+          <input type="hidden" name="which" value="high">
+          <input type="file" name="sound_file" accept=".wav,.mp3,.ogg" required>
+          <button type="submit" class="button-small">Wgraj nowy</button>
+        </form>
+        <form method="post" class="inline-form">
+          <input type="hidden" name="action" value="reset_sound">
+          <input type="hidden" name="which" value="high">
+          <button type="submit" class="button-small">Przywróć domyślny</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>6. Zmień hasło konfiguracji</h2>
+      <form method="post">
+        <input type="hidden" name="action" value="change_password">
+        <label>Nowe hasło:</label>
+        <input type="text" name="new_password" required>
+        <button type="submit" class="button">Zmień hasło</button>
+      </form>
+    </section>
+  </div>
+</body>
+</html>

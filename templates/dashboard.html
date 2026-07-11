@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monitor cukru - obóz</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <h1>🩸 Monitor cukru</h1>
+    <div class="topbar-right">
+      <span id="clock"></span>
+      <button id="mute-btn" type="button" title="Wycisz / włącz dźwięk alarmów">
+        <span id="mute-icon">🔊</span><span class="mute-label" id="mute-label">Dźwięk wł.</span>
+      </button>
+      <a class="gear" href="/config/login" title="Konfiguracja">⚙️</a>
+    </div>
+  </header>
+
+  <div id="alarm-banner" class="alarm-banner"></div>
+
+  <audio id="sound-low" preload="auto" src="{{ sound_low_url }}"></audio>
+  <audio id="sound-high" preload="auto" src="{{ sound_high_url }}"></audio>
+
+  {% if patient_count == 0 %}
+  <div class="empty-state">
+    <p>Nie dodano jeszcze żadnych dzieci.</p>
+    <a href="/config/login" class="button">Przejdź do konfiguracji →</a>
+  </div>
+  {% else %}
+  <div id="grid" class="grid" style="grid-template-columns: repeat({{ columns }}, {{ window_width }}px);">
+  </div>
+  {% endif %}
+
+<script>
+const WIN_W = {{ window_width }};
+const WIN_H = {{ window_height }};
+const ALERT_REPEAT_MS = {{ alert_repeat_seconds }} * 1000;
+
+function categoryLabel(cat) {
+  return {low: "NISKI ⚠️", high: "WYSOKI ⚠️", normal: "OK", unknown: "BRAK DANYCH", stale: "NIEAKTUALNE ⏱️"}[cat] || "?";
+}
+
+function render(items) {
+  const grid = document.getElementById('grid');
+  if (!grid) return;
+  grid.innerHTML = "";
+  items.forEach(it => {
+    const card = document.createElement('div');
+    card.className = 'card cat-' + (it.category || 'unknown');
+    card.style.width = WIN_W + 'px';
+    card.style.height = WIN_H + 'px';
+    if (it.category === 'stale') {
+      // wymuszamy szary wyglad niezaleznie od tego, co zdefiniowano w style.css dla .cat-*
+      card.style.backgroundColor = '#9e9e9e';
+      card.style.color = '#f0f0f0';
+      card.style.opacity = '0.85';
+    }
+
+    let valueHtml;
+    if (it.value !== null && it.value !== undefined) {
+      valueHtml = `<div class="value">${it.value} <span class="arrow">${it.trend_arrow || ''}</span></div>`;
+    } else {
+      valueHtml = `<div class="value value-missing">--</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="card-name">${it.name}</div>
+      ${valueHtml}
+      <div class="status-label">${categoryLabel(it.category)}</div>
+      <div class="meta">
+        ${it.category === 'stale' && it.error ? it.error : (it.time ? 'pomiar: ' + it.time : (it.error || ''))}
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// ---- Alarmy dzwiekowe ----
+const soundLow = document.getElementById('sound-low');
+const soundHigh = document.getElementById('sound-high');
+const muteBtn = document.getElementById('mute-btn');
+const muteIcon = document.getElementById('mute-icon');
+const muteLabel = document.getElementById('mute-label');
+const banner = document.getElementById('alarm-banner');
+
+let muted = localStorage.getItem('cukier_muted') === '1';
+
+function updateMuteUI() {
+  muteBtn.classList.toggle('is-muted', muted);
+  muteIcon.textContent = muted ? '🔇' : '🔊';
+  muteLabel.textContent = muted ? 'Wyciszono' : 'Dźwięk wł.';
+}
+updateMuteUI();
+
+muteBtn.addEventListener('click', () => {
+  muted = !muted;
+  localStorage.setItem('cukier_muted', muted ? '1' : '0');
+  updateMuteUI();
+  if (muted) {
+    soundLow.pause(); soundHigh.pause();
+  }
+});
+
+function playAlarm(hasLow, hasHigh) {
+  if (muted) return;
+  // niski cukier jest priorytetowy (bardziej pilny) jesli oba wystapia jednoczesnie
+  const audio = hasLow ? soundLow : soundHigh;
+  audio.currentTime = 0;
+  audio.play().catch(() => {
+    // przegladarka moze zablokowac autoplay do pierwszej interakcji uzytkownika - to normalne
+  });
+}
+
+let lastAlertPlayedAt = 0;
+
+function handleAlarmState(items) {
+  const hasLow = items.some(it => it.category === 'low');
+  const hasHigh = items.some(it => it.category === 'high');
+  const namesLow = items.filter(it => it.category === 'low').map(it => it.name);
+  const namesHigh = items.filter(it => it.category === 'high').map(it => it.name);
+
+  if (hasLow || hasHigh) {
+    const parts = [];
+    if (namesLow.length) parts.push('NISKI: ' + namesLow.join(', '));
+    if (namesHigh.length) parts.push('WYSOKI: ' + namesHigh.join(', '));
+    banner.textContent = '⚠️ ALARM — ' + parts.join(' | ');
+    banner.classList.add('show');
+
+    const now = Date.now();
+    if (now - lastAlertPlayedAt >= ALERT_REPEAT_MS) {
+      lastAlertPlayedAt = now;
+      playAlarm(hasLow, hasHigh);
+    }
+  } else {
+    banner.classList.remove('show');
+    lastAlertPlayedAt = 0;
+  }
+}
+
+async function refresh() {
+  try {
+    const res = await fetch('/data');
+    const items = await res.json();
+    render(items);
+    handleAlarmState(items);
+  } catch (e) {
+    console.error('Blad pobierania danych', e);
+  }
+}
+
+function tickClock() {
+  const el = document.getElementById('clock');
+  if (el) el.textContent = new Date().toLocaleTimeString('pl-PL');
+}
+
+refresh();
+setInterval(refresh, 15000);
+tickClock();
+setInterval(tickClock, 1000);
+</script>
+</body>
+</html>
