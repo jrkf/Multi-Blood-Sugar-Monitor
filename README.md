@@ -165,6 +165,8 @@ konta rodzinnego, jeśli to możliwe.
        po to, żeby osoba techniczna mogła jednorazowo wygenerować plik
        tokenu opisany wyżej. Same dane logowania NIE są wpisywane
        bezpośrednio do tego programu.
+     - ewentualnie rodzic powinien przejść przez poniższą instrukcje:
+       https://github.com/jrkf/Carelink_get_jwt_token
 
    Co wpisać w programie (po wygenerowaniu pliku tokenu):
      Konfiguracja -> "1. Dodaj dziecko" -> źródło danych: CareLink
@@ -176,6 +178,7 @@ konta rodzinnego, jeśli to możliwe.
 
    Uwaga: to źródło wymaga najwięcej przygotowania - zaplanuj czas na
    wygenerowanie plików tokenów z wyprzedzeniem, nie w dniu wyjazdu.
+   Szczegóły generowania tokenu opisane są tu: https://github.com/jrkf/Carelink_get_jwt_token
 
 
 CO ROBIĆ, JEŚLI KAFELEK POKAZUJE "--" LUB BŁĄD
