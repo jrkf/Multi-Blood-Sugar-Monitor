@@ -15,12 +15,12 @@ kafelki pojawią się razem na jednej stronie:
   1. Dexcom (aplikacja/konto Dexcom, np. Dexcom G6/G7)
   2. LibreLinkUp (FreeStyle Libre - konto "obserwującego")
   3. Nightscout ("CGM in the Cloud" - własny serwer Nightscout)
-  4. Medtronic CareLink (pompy/sensory Medtronic, konto CarePartner)
+  4. Medtronic CareLink (pompy/sensory Medtronic, konto
 
-Poniżej opisano krok po kroku, co należy poprosić o przesłanie rodzica
-każdego dziecka, w zależności od tego, jakiego systemu monitorowania
-cukru używa.
+-------------
+
 ŁATWE URUCHOMINIE PROGRAMU (opcja łatwiejsza dla mniej zaawansowanych uzytkowników)
+
 1.ściagnij poniższy plik:
 https://github.com/jrkf/Multi-Blood-Sugar-Monitor/blob/main/uruchm%20Monitor.bat
 2. kliknij na tym pliku prawym klawiszem myszki i użyj opcji 'uruchom jako administrator'
