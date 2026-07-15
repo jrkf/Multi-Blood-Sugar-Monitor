@@ -15,21 +15,20 @@ kafelki pojawią się razem na jednej stronie:
   1. Dexcom (aplikacja/konto Dexcom, np. Dexcom G6/G7)
   2. LibreLinkUp (FreeStyle Libre - konto "obserwującego")
   3. Nightscout ("CGM in the Cloud" - własny serwer Nightscout)
-  4. Medtronic CareLink (pompy/sensory Medtronic, konto
+  4. Medtronic CareLink (sensory Guaridain, Simplera Medtronic)
 
 -------------
 
 ŁATWE URUCHOMINIE PROGRAMU (opcja łatwiejsza dla mniej zaawansowanych uzytkowników)
 
-1.ściagnij poniższy plik:
-https://github.com/jrkf/Multi-Blood-Sugar-Monitor/blob/main/uruchm%20Monitor.bat
+1. Ściagnij poniższy plik: https://github.com/jrkf/Multi-Blood-Sugar-Monitor/releases/download/v.1.0.1/uruchm.Monitor.bat
 
-2. kliknij na tym pliku prawym klawiszem myszki i użyj opcji 'uruchom jako administrator'
+2. Kliknij na tym pliku prawym klawiszem myszki i użyj opcji 'uruchom jako administrator'
 
-3. postepuj zgodnie z instrukcjami jakie się wyświetlają na ekranie
+3. Postepuj zgodnie z instrukcjami jakie się wyświetlają na ekranie, do czasu uruchomienia się przeglądarki z naszym programem
 ------------------------------------------------------------------------------
 
-JEDNORAZOWE PRZYGOTOWANIE PROGRAMU (robi to jedna osoba, raz, przed wyjazdem - trudniejsza instrukcja krok po kroku dla zaawansowanych)
+JEDNORAZOWE PRZYGOTOWANIE PROGRAMU (Trudniejsza instrukcja krok po kroku dla zaawansowanych, jeśli powyższa instrukcja nie zadziała)
 ------------------------------------------------------------------------------
 1. Zainstaluj Pythona (jeśli nie ma): https://www.python.org/downloads/
    Podczas instalacji zaznacz "Add Python to PATH".
