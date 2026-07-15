@@ -148,7 +148,7 @@ konta rodzinnego, jeśli to możliwe.
    zamiast pokazywać mylący kolor na podstawie starego odczytu.
 
 
-4) MEDTRONIC CARELINK (pompy/sensory Medtronic, np. MiniMed 780G)
+4) MEDTRONIC CARELINK (sensory Medtronic, np. Guardian 4)
    -----------------------------------------------------------------
    To źródło jest najbardziej techniczne - wymaga wcześniejszego
    wygenerowania pliku z tokenem dostępu (logindata.json) przy pomocy
