@@ -1,4 +1,4 @@
-MONITOR CUKRU - INSTRUKCJA (prosto, krok po kroku)
+MONITOR CUKRU - INSTRUKCJA 
 ====================================================
 
 CO TO JEST
