@@ -20,10 +20,12 @@ kafelki pojawią się razem na jednej stronie:
 -------------
 
 ŁATWE URUCHOMINIE PROGRAMU (opcja łatwiejsza dla mniej zaawansowanych uzytkowników)
-
+-
 1.ściagnij poniższy plik:
 https://github.com/jrkf/Multi-Blood-Sugar-Monitor/blob/main/uruchm%20Monitor.bat
+
 2. kliknij na tym pliku prawym klawiszem myszki i użyj opcji 'uruchom jako administrator'
+
 3. postepuj zgodnie z instrukcjami jakie się wyświetlają na ekranie
 ------------------------------------------------------------------------------
 
