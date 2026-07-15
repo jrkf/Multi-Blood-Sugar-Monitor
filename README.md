@@ -8,7 +8,8 @@ wszystkich dzieci na obozie. Kafelek dziecka świeci na zielono (wynik OK),
 pomarańczowo/czerwono (za wysoki lub za niski, wymaga uwagi) albo szaro
 ("brak danych" / "dane nieaktualne").
 
-<img width="2560" height="1440" alt="image" src="https://github.com/user-attachments/assets/61b24a26-4789-4cce-9284-dc2789745874" />
+<img width="2560" height="1440" alt="image" src="https://github.com/user-attachments/assets/d300c1bb-adf6-4f55-a0be-17f36b09fdc4" />
+
 
 
 Program potrafi pobierać dane z CZTERECH różnych źródeł jednocześnie -
