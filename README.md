@@ -20,9 +20,14 @@ kafelki pojawią się razem na jednej stronie:
 Poniżej opisano krok po kroku, co należy poprosić o przesłanie rodzica
 każdego dziecka, w zależności od tego, jakiego systemu monitorowania
 cukru używa.
+ŁATWE URUCHOMINIE PROGRAMU (opcja łatwiejsza dla mniej zaawansowanych uzytkowników)
+1.ściagnij poniższy plik:
+https://github.com/jrkf/Multi-Blood-Sugar-Monitor/blob/main/uruchm%20Monitor.bat
+2. kliknij na tym pliku prawym klawiszem myszki i użyj opcji 'uruchom jako administrator'
+3. postepuj zgodnie z instrukcjami jakie się wyświetlają na ekranie
+------------------------------------------------------------------------------
 
-
-JEDNORAZOWE PRZYGOTOWANIE PROGRAMU (robi to jedna osoba, raz, przed wyjazdem)
+JEDNORAZOWE PRZYGOTOWANIE PROGRAMU (robi to jedna osoba, raz, przed wyjazdem - trudniejsza instrukcja krok po kroku dla zaawansowanych)
 ------------------------------------------------------------------------------
 1. Zainstaluj Pythona (jeśli nie ma): https://www.python.org/downloads/
    Podczas instalacji zaznacz "Add Python to PATH".
