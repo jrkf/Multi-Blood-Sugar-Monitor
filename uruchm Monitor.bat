@@ -9,12 +9,14 @@ echo ============================================================
 echo.
 
 REM ============================================================
-REM KROK 1: Sprawdz czy jest zainstalowany Python
+REM KROK 1: Sprawdz czy jest zainstalowany działający Python
 REM ============================================================
-where python >nul 2>&1
+echo [1/4] Sprawdzam obecnosc srodowiska Python...
+
+python --version >nul 2>&1
 if %errorlevel%==0 goto krok2
 
-echo [1/4] Nie znaleziono Pythona na tym komputerze.
+echo       Nie znaleziono dzialajacego Pythona na tym komputerze.
 echo       Pobieram instalator Pythona (moze potrwac chwile)...
 echo.
 
@@ -31,15 +33,25 @@ if not exist "%PY_INSTALLER%" (
     exit /b 1
 )
 
-echo Instaluje Pythona w tle - to moze potrwac 1-2 minuty, prosze czekac...
-"%PY_INSTALLER%" /quiet InstallAllUsers=1 PrependPath=1 Include_test=0
+echo Instaluje Pythona – to moze potrwac 1-2 minuty, prosze czekac...
+REM Zmiana: InstallAllUsers=0 pozwala na instalacje bez praw administratora
+"%PY_INSTALLER%" /quiet InstallAllUsers=0 PrependPath=1 Include_test=0
 del "%PY_INSTALLER%" >nul 2>&1
 
 echo.
-echo Python zainstalowany. Uruchamiam ponownie ten plik, zeby wczytac zmiany...
-timeout /t 3 /nobreak >nul
-start "" cmd /c "%~f0"
-exit /b 0
+echo Python zainstalowany. Aktualizuje sciezki systemowe w tym oknie...
+REM Dynamiczne odswiezenie zmiennej PATH dla biezacego okna terminala
+set "PATH=%USERPROFILE%\AppData\Local\Programs\Python\Python312\;%USERPROFILE%\AppData\Local\Programs\Python\Python312\Scripts\;%PATH%"
+
+python --version >nul 2>&1
+if not %errorlevel%==0 (
+    echo.
+    echo Python zostal zainstalowany, ale wymaga ponownego uruchomienia konsoli.
+    echo Uruchamiam skrypt w nowym oknie...
+    timeout /t 3 /nobreak >nul
+    start "" cmd /c "%~f0"
+    exit /b 0
+)
 
 REM ============================================================
 REM KROK 2: Sprawdz czy program jest juz pobrany z GitHub
