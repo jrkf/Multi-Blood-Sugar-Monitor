@@ -67,7 +67,35 @@ if exist "%APP_DIR%\app.py" (
 )
 
 echo [2/4] Pobieram program z GitHub...
-set "ZIP_FILE=%TEMP%\monitor_cukru_repo.zip"
+
+REM Wlasny folder roboczy OBOK SKRYPTU (nie %TEMP%) - unikamy problemow
+REM z antywirusem/uprawnieniami w katalogu tymczasowym systemu
+set "WORK_DIR=%~dp0_pobieranie_monitor"
+
+REM Jesli folder roboczy juz istnieje (np. z poprzedniej proby), NIE kasujemy
+REM go na sile - szukamy wolnej nazwy z dopiskiem _data
+if exist "%WORK_DIR%" (
+    set "SUFFIX=1"
+    :szukaj_wolnego_work_dir
+    if exist "%WORK_DIR%_data!SUFFIX!" (
+        set /a SUFFIX+=1
+        goto szukaj_wolnego_work_dir
+    )
+    set "WORK_DIR=%WORK_DIR%_data!SUFFIX!"
+)
+
+mkdir "%WORK_DIR%" 2>nul
+if not exist "%WORK_DIR%" (
+    echo.
+    echo BLAD: nie udalo sie utworzyc folderu roboczego "%WORK_DIR%".
+    echo Sprawdz uprawnienia do zapisu w folderze programu.
+    echo.
+    pause
+    exit /b 1
+)
+
+set "ZIP_FILE=%WORK_DIR%\monitor_cukru_repo.zip"
+set "EXTRACT_DIR=%WORK_DIR%\rozpakowane"
 set "REPO_ZIP_URL=https://github.com/jrkf/Multi-Blood-Sugar-Monitor/archive/refs/heads/main.zip"
 
 curl -L -o "%ZIP_FILE%" "%REPO_ZIP_URL%"
@@ -90,19 +118,52 @@ if not exist "%ZIP_FILE%" (
 )
 
 echo Rozpakowuje program...
-set "EXTRACT_DIR=%TEMP%\monitor_cukru_extract"
-if exist "%EXTRACT_DIR%" rmdir /s /q "%EXTRACT_DIR%"
-mkdir "%EXTRACT_DIR%"
-tar -xf "%ZIP_FILE%" -C "%EXTRACT_DIR%"
-
-REM folder w zipie nazywa sie np. "Multi-Blood-Sugar-Monitor-main" - znajdz go i przenies
-for /d %%D in ("%EXTRACT_DIR%\*") do (
-    move "%%D" "%APP_DIR%" >nul
+mkdir "%EXTRACT_DIR%" 2>nul
+if not exist "%EXTRACT_DIR%" (
+    echo.
+    echo BLAD: nie udalo sie utworzyc folderu "%EXTRACT_DIR%" do rozpakowania.
+    echo.
+    pause
+    exit /b 1
 )
 
-del "%ZIP_FILE%" >nul 2>&1
-rmdir /s /q "%EXTRACT_DIR%" >nul 2>&1
+tar -xf "%ZIP_FILE%" -C "%EXTRACT_DIR%"
+if errorlevel 1 (
+    echo.
+    echo BLAD: rozpakowanie archiwum nie powiodlo sie ^(kod bledu: %errorlevel%^).
+    echo Sprawdz, czy antywirus nie blokuje pliku "%ZIP_FILE%".
+    echo.
+    pause
+    exit /b 1
+)
 
+REM folder w zipie nazywa sie np. "Multi-Blood-Sugar-Monitor-main" - znajdz go
+set "FOUND_SRC="
+for /d %%D in ("%EXTRACT_DIR%\*") do set "FOUND_SRC=%%D"
+
+if not defined FOUND_SRC (
+    echo.
+    echo BLAD: po rozpakowaniu nie znaleziono folderu z kodem programu.
+    echo.
+    pause
+    exit /b 1
+)
+
+REM jesli APP_DIR juz istnieje (np. niekompletny po poprzedniej, nieudanej
+REM probie) - NIE nadpisujemy go. Przenosimy stary na bok z dopiskiem _data
+if exist "%APP_DIR%" (
+    set "SUFFIX2=1"
+    :szukaj_wolnej_app_dir
+    if exist "%APP_DIR%_data!SUFFIX2!" (
+        set /a SUFFIX2+=1
+        goto szukaj_wolnej_app_dir
+    )
+    echo Uwaga: folder "%APP_DIR%" juz istnieje, ale jest niekompletny.
+    echo Przenosze go do "%APP_DIR%_data!SUFFIX2!" i pobieram program od nowa.
+    move "%APP_DIR%" "%APP_DIR%_data!SUFFIX2!" >nul
+)
+
+move "%FOUND_SRC%" "%APP_DIR%" >nul
 if not exist "%APP_DIR%\app.py" (
     echo.
     echo BLAD: pobrano dane, ale nie znaleziono pliku app.py.
@@ -111,6 +172,10 @@ if not exist "%APP_DIR%\app.py" (
     pause
     exit /b 1
 )
+
+REM sprzatanie - to swiezo utworzony przez nas folder roboczy, wiec bezpiecznie
+REM mozna go usunac (nie jest wspoldzielony z innym procesem/uruchomieniem)
+rmdir /s /q "%WORK_DIR%" >nul 2>&1
 
 echo Program pobrany pomyslnie.
 
