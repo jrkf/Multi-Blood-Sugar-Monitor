@@ -25,7 +25,7 @@ kafelki pojawią się razem na jednej stronie:
 
 ŁATWE URUCHOMINIE PROGRAMU (opcja łatwiejsza dla mniej zaawansowanych uzytkowników)
 
-1. Ściagnij poniższy plik: https://github.com/jrkf/Multi-Blood-Sugar-Monitor/releases/download/v.1.0.1/uruchm.Monitor.bat
+1. Ściagnij poniższy plik:  https://github.com/jrkf/Multi-Blood-Sugar-Monitor/releases/download/V.1.0.2/uruchm.Monitor.bat
 
 2. Kliknij na tym pliku prawym klawiszem myszki i użyj opcji 'uruchom jako administrator'
 
