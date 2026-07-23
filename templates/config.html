@@ -19,7 +19,35 @@
     {% if message %}<div class="flash">{{ message }}</div>{% endif %}
 
     <section class="panel">
-      <h2>1. Dodaj dziecko</h2>
+      <h2>1. Grupy dzieci</h2>
+      <p class="hint">Utwórz grupy (np. "Młodsza grupa chłopców"), aby na dashboardzie móc przełączać się między nimi za pomocą zakładek.</p>
+      <form method="post">
+        <input type="hidden" name="action" value="add_group">
+        <label>Nazwa nowej grupy:</label>
+        <input type="text" name="group_name" required placeholder="np. Starsza grupa dziewczynek">
+        <button type="submit" class="button">Dodaj grupę</button>
+      </form>
+
+      {% if cfg.groups %}
+      <ul class="groups-list">
+        {% for g in cfg.groups %}
+        <li>
+          <span>{{ g.name }}</span>
+          <form method="post" onsubmit="return confirm('Usunąć grupę {{ g.name }}? Dzieci z tej grupy staną się nieprzypisane.');">
+            <input type="hidden" name="action" value="delete_group">
+            <input type="hidden" name="group_id" value="{{ g.id }}">
+            <button type="submit" class="button-small danger">Usuń</button>
+          </form>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="hint">Brak zdefiniowanych grup.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>2. Dodaj dziecko</h2>
       <form method="post">
         <input type="hidden" name="action" value="add_patient">
         <label>Imię i nazwisko / pseudonim:</label>
@@ -31,6 +59,14 @@
           <option value="librelinkup">LibreLinkUp (FreeStyle Libre)</option>
           <option value="nightscout">Nightscout</option>
           <option value="carelink">CareLink (Medtronic Guardian 4 lub Simplera)</option>
+        </select>
+
+        <label>Grupa:</label>
+        <select name="group_id">
+          <option value="">— Brak grupy —</option>
+          {% for g in cfg.groups %}
+          <option value="{{ g.id }}">{{ g.name }}</option>
+          {% endfor %}
         </select>
 
         <div id="dexcom-fields">
@@ -92,14 +128,15 @@
     </script>
 
     <section class="panel">
-      <h2>2. Import z pliku .txt</h2>
+      <h2>3. Import z pliku .txt</h2>
       <p class="hint">
-        Jedna linia = jedno dziecko.<br>
-        Dexcom: <code>login,haslo,imię_i_nazwisko</code> (opcjonalnie: <code>,region</code> na końcu)<br>
-        Nightscout: <code>nightscout,adres_url,token(może być puste),imię_i_nazwisko</code><br>
-        LibreLinkUp: <code>librelinkup,email,hasło,region,imię_i_nazwisko,id_dziecka(opcjonalnie)</code><br>
-        CareLink: <code>carelink,nazwa_lub_sciezka_pliku_tokenu,imię_i_nazwisko</code><br>
-        Przykład: <code>carelink,jasiu_token.json,Jan Kowalski</code>
+        Jedna linia = jedno dziecko. Na końcu każdej linii możesz opcjonalnie podać <b>nazwę grupy</b> —
+        jeśli grupa o takiej nazwie nie istnieje, zostanie utworzona automatycznie.<br>
+        Dexcom: <code>login,haslo,imię_i_nazwisko,region(opcjonalnie),grupa(opcjonalnie)</code><br>
+        Nightscout: <code>nightscout,adres_url,token(może być puste),imię_i_nazwisko,grupa(opcjonalnie)</code><br>
+        LibreLinkUp: <code>librelinkup,email,hasło,region,imię_i_nazwisko,id_dziecka(opcjonalnie),grupa(opcjonalnie)</code><br>
+        CareLink: <code>carelink,nazwa_lub_sciezka_pliku_tokenu,imię_i_nazwisko,grupa(opcjonalnie)</code><br>
+        Przykład: <code>carelink,jasiu_token.json,Jan Kowalski,Młodsza grupa chłopców</code>
       </p>
       <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="action" value="import_txt">
@@ -109,10 +146,10 @@
     </section>
 
     <section class="panel">
-      <h2>3. Lista dzieci ({{ cfg.patients|length }})</h2>
+      <h2>4. Lista dzieci ({{ cfg.patients|length }})</h2>
       {% if cfg.patients %}
       <table class="patients-table">
-        <tr><th>Imię</th><th>Źródło</th><th>Identyfikator / URL / Plik</th><th>Region</th><th></th></tr>
+        <tr><th>Imię</th><th>Źródło</th><th>Identyfikator / URL / Plik</th><th>Region</th><th>Grupa</th><th></th></tr>
         {% for p in cfg.patients %}
         <tr>
           <td>{{ p.name }}</td>
@@ -134,6 +171,18 @@
             {% else %}{{ p.region }}{% endif %}
           </td>
           <td>
+            <form method="post" class="group-inline-form">
+              <input type="hidden" name="action" value="set_patient_group">
+              <input type="hidden" name="patient_id" value="{{ p.id }}">
+              <select name="group_id" onchange="this.form.submit()">
+                <option value="" {% if not p.group_id %}selected{% endif %}>— Brak —</option>
+                {% for g in cfg.groups %}
+                <option value="{{ g.id }}" {% if p.group_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </td>
+          <td>
             <form method="post" onsubmit="return confirm('Usunąć {{ p.name }}?');">
               <input type="hidden" name="action" value="delete_patient">
               <input type="hidden" name="patient_id" value="{{ p.id }}">
@@ -149,7 +198,7 @@
     </section>
 
     <section class="panel">
-      <h2>4. Wygląd i odświeżanie</h2>
+      <h2>5. Wygląd i odświeżanie</h2>
       <form method="post">
         <input type="hidden" name="action" value="save_layout">
         <label>Liczba kolumn w siatce:</label>
@@ -160,12 +209,14 @@
         <input type="number" name="window_height" value="{{ cfg.window_height }}" min="80" max="600">
         <label>Co ile sekund pobierać nowe dane (min. 30):</label>
         <input type="number" name="polling_interval_seconds" value="{{ cfg.polling_interval_seconds }}" min="30" max="600">
+        <label>Rozmiar czcionki na kafelkach (%, domyślnie 100):</label>
+        <input type="number" name="card_font_scale" value="{{ cfg.card_font_scale }}" min="40" max="200">
         <button type="submit" class="button">Zapisz</button>
       </form>
     </section>
 
     <section class="panel">
-      <h2>5. Alarmy dźwiękowe</h2>
+      <h2>6. Alarmy dźwiękowe</h2>
       <form method="post">
         <input type="hidden" name="action" value="save_alerts">
         <label>Próg niskiego cukru (poniżej → czerwone okienko + alarm):</label>
@@ -215,7 +266,7 @@
     </section>
 
     <section class="panel">
-      <h2>6. Zmień hasło konfiguracji</h2>
+      <h2>7. Zmień hasło konfiguracji</h2>
       <form method="post">
         <input type="hidden" name="action" value="change_password">
         <label>Nowe hasło:</label>

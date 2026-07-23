@@ -11,12 +11,26 @@
     <h1>🩸 Monitor cukru</h1>
     <div class="topbar-right">
       <span id="clock"></span>
+      <select id="sort-select" title="Sortowanie kafelków">
+        <option value="priority">Sortuj: alarmy najpierw</option>
+        <option value="name">Sortuj: imię i nazwisko</option>
+        <option value="source">Sortuj: system monitorowania</option>
+      </select>
+      <div class="font-size-ctrl" title="Rozmiar czcionki na kafelkach">
+        <button id="font-minus" type="button">A-</button>
+        <button id="font-reset" type="button">A</button>
+        <button id="font-plus" type="button">A+</button>
+      </div>
       <button id="mute-btn" type="button" title="Wycisz / włącz dźwięk alarmów">
         <span id="mute-icon">🔊</span><span class="mute-label" id="mute-label">Dźwięk wł.</span>
       </button>
       <a class="gear" href="/config/login" title="Konfiguracja">⚙️</a>
     </div>
   </header>
+
+  {% if groups %}
+  <nav id="tabs" class="tabs"></nav>
+  {% endif %}
 
   <div id="alarm-banner" class="alarm-banner"></div>
 
@@ -37,14 +51,107 @@
 const WIN_W = {{ window_width }};
 const WIN_H = {{ window_height }};
 const ALERT_REPEAT_MS = {{ alert_repeat_seconds }} * 1000;
+const GROUPS = {{ groups|tojson }};
+const CONFIG_FONT_SCALE = {{ card_font_scale }} / 100;
+
+// ---- Rozmiar czcionki na kafelkach (zapamietywany osobno dla kazdej przegladarki/monitora) ----
+let fontScale = parseFloat(sessionStorage.getItem('cukier_font_scale')) || CONFIG_FONT_SCALE;
+
+function applyFontScale() {
+  document.documentElement.style.setProperty('--font-scale', fontScale);
+}
+applyFontScale();
+
+document.getElementById('font-minus').addEventListener('click', () => {
+  fontScale = Math.max(0.4, +(fontScale - 0.1).toFixed(2));
+  sessionStorage.setItem('cukier_font_scale', fontScale);
+  applyFontScale();
+});
+document.getElementById('font-plus').addEventListener('click', () => {
+  fontScale = Math.min(2.5, +(fontScale + 0.1).toFixed(2));
+  sessionStorage.setItem('cukier_font_scale', fontScale);
+  applyFontScale();
+});
+document.getElementById('font-reset').addEventListener('click', () => {
+  fontScale = CONFIG_FONT_SCALE;
+  sessionStorage.setItem('cukier_font_scale', fontScale);
+  applyFontScale();
+});
+
+// ---- Taby grup (kazdy monitor moze miec inna zakladke wybrana przez URL ?group=) ----
+let activeGroup = new URLSearchParams(location.search).get('group') || 'all';
+
+function buildTabs() {
+  const bar = document.getElementById('tabs');
+  if (!bar) return;
+  let html = `<button type="button" class="tab-btn${activeGroup === 'all' ? ' active' : ''}" data-group="all">Wszyscy</button>`;
+  GROUPS.forEach(g => {
+    html += `<button type="button" class="tab-btn${activeGroup === g.id ? ' active' : ''}" data-group="${g.id}">${g.name}</button>`;
+  });
+  html += `<button type="button" class="tab-btn${activeGroup === 'none' ? ' active' : ''}" data-group="none">Bez grupy</button>`;
+  bar.innerHTML = html;
+  bar.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeGroup = btn.dataset.group;
+      const url = new URL(location);
+      if (activeGroup === 'all') url.searchParams.delete('group');
+      else url.searchParams.set('group', activeGroup);
+      history.replaceState(null, '', url);
+      buildTabs();
+      refresh();
+    });
+  });
+}
+buildTabs();
+
+// ---- Sortowanie kafelkow ----
+const sortSelect = document.getElementById('sort-select');
+let sortMode = sessionStorage.getItem('cukier_sort_mode') || 'priority';
+sortSelect.value = sortMode;
+sortSelect.addEventListener('change', () => {
+  sortMode = sortSelect.value;
+  sessionStorage.setItem('cukier_sort_mode', sortMode);
+  refresh();
+});
+
+const PRIORITY_RANK = {low: 0, high: 1, normal: 2, stale: 3, unknown: 4};
+const SOURCE_LABELS = {dexcom: 'Dexcom', librelinkup: 'LibreLinkUp', nightscout: 'Nightscout', carelink: 'CareLink'};
+
+function sortItems(items) {
+  const sorted = [...items];
+  if (sortMode === 'name') {
+    sorted.sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+  } else if (sortMode === 'source') {
+    sorted.sort((a, b) => {
+      const sa = SOURCE_LABELS[a.source] || a.source || '';
+      const sb = SOURCE_LABELS[b.source] || b.source || '';
+      return sa.localeCompare(sb, 'pl') || a.name.localeCompare(b.name, 'pl');
+    });
+  } else {
+    // priorytet: niski cukier -> wysoki cukier -> reszta, w kolejnosci alfabetycznej wewnatrz grupy
+    sorted.sort((a, b) => {
+      const ra = PRIORITY_RANK[a.category] ?? 5;
+      const rb = PRIORITY_RANK[b.category] ?? 5;
+      return ra - rb || a.name.localeCompare(b.name, 'pl');
+    });
+  }
+  return sorted;
+}
 
 function categoryLabel(cat) {
   return {low: "NISKI ⚠️", high: "WYSOKI ⚠️", normal: "OK", unknown: "BRAK DANYCH", stale: "NIEAKTUALNE ⏱️"}[cat] || "?";
 }
 
-function render(items) {
+function filterByGroup(items) {
+  if (activeGroup === 'all') return items;
+  if (activeGroup === 'none') return items.filter(it => !it.group_id);
+  return items.filter(it => it.group_id === activeGroup);
+}
+
+function render(allItems) {
   const grid = document.getElementById('grid');
   if (!grid) return;
+  const items = sortItems(filterByGroup(allItems));
   grid.innerHTML = "";
   items.forEach(it => {
     const card = document.createElement('div');

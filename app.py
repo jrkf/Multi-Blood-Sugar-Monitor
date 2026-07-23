@@ -9,7 +9,7 @@ import threading
 import time
 import uuid
 import carelink_client2
-from datetime import datetime
+from datetime import datetime, timezone
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 
@@ -39,7 +39,9 @@ DEFAULT_CONFIG = {
     "columns": 6,
     "window_width": 220,
     "window_height": 150,
+    "card_font_scale": 100,
     "patients": [],
+    "groups": [],
     "threshold_low": 70,
     "threshold_high": 180,
     "alert_repeat_seconds": 15,
@@ -73,6 +75,20 @@ def save_config(cfg):
             json.dump(cfg, f, ensure_ascii=False, indent=2)
 
 
+def get_or_create_group_id(cfg, group_name):
+    """Zwraca id grupy o podanej nazwie, tworzac ja jesli jeszcze nie istnieje."""
+    group_name = (group_name or "").strip()
+    if not group_name:
+        return ""
+    cfg.setdefault("groups", [])
+    for g in cfg["groups"]:
+        if g["name"].lower() == group_name.lower():
+            return g["id"]
+    new_id = str(uuid.uuid4())
+    cfg["groups"].append({"id": new_id, "name": group_name})
+    return new_id
+
+
 def classify_glucose(value, threshold_low=70, threshold_high=180):
     if value is None:
         return "unknown"
@@ -84,6 +100,115 @@ def classify_glucose(value, threshold_low=70, threshold_high=180):
 
 
 NS_TREND_ARROWS = {1: "↑↑", 2: "↑", 3: "↗", 4: "→", 5: "↘", 6: "↓", 7: "↓↓"}
+
+# Niektore systemy (np. Nightscout, Dexcom) czasem zwracaja trend jako tekst
+# ("Flat", "DoubleDown" itp.) zamiast gotowej strzalki - ta mapa zamienia
+# wszystkie znane warianty tekstowe na jednolite strzalki, tak samo jak
+# w innych zrodlach danych.
+TREND_TEXT_TO_ARROW = {
+    "doubleup": "↑↑", "singleup": "↑", "fortyfiveup": "↗", "slightup": "↗",
+    "flat": "→", "stable": "→", "none": "→",
+    "fortyfivedown": "↘", "slightdown": "↘",
+    "singledown": "↓", "doubledown": "↓↓",
+    "notcomputable": "", "rateoutofrange": "",
+}
+
+# Powyzej ktorego wieku odczytu (w sekundach) uznajemy dane za nieaktualne
+# i przestajemy pokazywac cyfre cukru na kafelku (pokazujemy tylko "--" + info o wieku odczytu).
+STALE_AFTER_SECONDS = 15 * 60
+
+
+def _age_seconds_from_utc(reading_dt_utc):
+    """Liczy wiek odczytu w sekundach na podstawie znacznika czasu ze
+    swiadomoscia strefy (tzinfo=UTC), porownujac go z aktualnym czasem UTC.
+    Dzieki temu wynik jest poprawny niezaleznie od tego, w jakiej strefie
+    czasowej dziala komputer/serwer, na ktorym uruchomiony jest monitor -
+    w przeciwienstwie do wczesniejszego porownywania "naiwnych" (bez strefy)
+    znacznikow czasu z datetime.now()."""
+    if reading_dt_utc is None:
+        return None
+    return (datetime.now(timezone.utc) - reading_dt_utc).total_seconds()
+
+
+def parse_llu_factory_timestamp_utc(ts_str):
+    """Parsuje pole 'FactoryTimestamp' z LibreLinkUp API.
+
+    UWAGA NA STREFY CZASOWE: LibreLinkUp zwraca DWA znaczniki czasu -
+    'Timestamp' oraz 'FactoryTimestamp'. 'Timestamp' bywa przesuniety w
+    niestandardowy sposob (zalezny od ustawien konta/regionu) i NIE
+    odpowiada wprost ani czasowi lokalnemu komputera z monitorem, ani
+    czystemu UTC - dlatego nie nadaje sie do liczenia wieku odczytu.
+    'FactoryTimestamp' jest za to zawsze czasem UTC, wiec to jego uzywamy
+    do wyliczenia, czy odczyt jest starszy niz STALE_AFTER_SECONDS. Do
+    wyswietlenia godziny na kafelku nadal uzywamy pola 'Timestamp' (zeby nie
+    zmieniac tego, co widzi uzytkownik) - zmienia sie tylko logika
+    "czy pokazac/schowac wartosc".
+    """
+    if not ts_str:
+        return None
+    try:
+        naive_utc = datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p")
+        return naive_utc.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def parse_carelink_timestamp_utc(raw_ts):
+    """Parsuje znacznik czasu odczytu z CareLink na obiekt datetime ze
+    swiadomoscia strefy czasowej (zawsze sprowadzony do UTC).
+
+    CareLink potrafi zwrocic czas w kilku wariantach: z sufiksem 'Z' (UTC),
+    z jawnym przesunieciem np. '+02:00', albo bez zadnej informacji o
+    strefie. Poprzednia wersja kodu po prostu obcinala wszystko po '+' lub
+    'Z' i traktowala pozostaly czas jako czas lokalny komputera z
+    monitorem - to byl blad: np. czas z sufiksem 'Z' (UTC) byl traktowany
+    tak, jakby byl juz czasem polskim, co przy roznicy stref (UTC+1/UTC+2)
+    powodowalo, ze swiezy odczyt wygladal na 1-2h starszy niz w
+    rzeczywistosci (i byl niepotrzebnie ukrywany jako "nieaktualny").
+    Teraz jawnie parsujemy strefe i sprowadzamy wszystko do UTC, dzieki
+    czemu porownanie wieku odczytu jest poprawne niezaleznie od strefy
+    czasowej komputera, na ktorym dziala monitor.
+    """
+    if not raw_ts:
+        return None
+    ts = raw_ts.strip()
+    if ts.endswith("Z"):
+        ts = ts[:-1] + "+00:00"
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            dt = datetime.strptime(ts, fmt)
+        except ValueError:
+            continue
+        if dt.tzinfo is None:
+            # Brak jawnej strefy w danych z CareLink - w praktyce dane bez
+            # strefy z tego API sa czasem UTC, wiec przyjmujemy UTC zamiast
+            # (blednie) zakladac czas lokalny komputera z monitorem.
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    return None
+
+
+def normalize_trend_arrow(raw_arrow):
+    """Zwraca gotowa strzalke (↑↑ ↑ ↗ → ↘ ↓ ↓↓) niezaleznie od tego, czy zrodlo
+    danych zwrocilo juz strzalke, czy tekstowy opis trendu ("Flat", "DoubleDown"...)."""
+    if not raw_arrow:
+        return ""
+    if raw_arrow in ("↑↑", "↑", "↗", "→", "↘", "↓", "↓↓"):
+        return raw_arrow
+    key = str(raw_arrow).strip().lower().replace(" ", "").replace("_", "")
+    return TREND_TEXT_TO_ARROW.get(key, "")
+
+
+def build_stale_result(pid, name, time_str, age_seconds):
+    """Wynik dla odczytu starszego niz STALE_AFTER_SECONDS - ukrywa wartosc cukru."""
+    age_minutes = int(age_seconds // 60)
+    return {
+        "id": pid, "name": name, "value": None, "trend_arrow": "",
+        "trend_description": "", "time": time_str, "status": "stale",
+        "error": f"Nieaktualne dane - ostatni odczyt sprzed {age_minutes} min",
+        "category": "stale",
+    }
 
 # --- LibreLinkUp ---
 LLU_REGION_HOSTS = {
@@ -217,7 +342,7 @@ def fetch_one_patient_librelinkup(patient, threshold_low=70, threshold_high=180)
             }
         value = point.get("Value") if point.get("Value") is not None else point.get("value")
         trend = point.get("TrendArrow") if point.get("TrendArrow") is not None else point.get("trendArrow")
-        arrow = LLU_TREND_ARROWS.get(trend, "")
+        arrow = normalize_trend_arrow(LLU_TREND_ARROWS.get(trend, ""))
         ts_str = point.get("Timestamp") or point.get("FactoryTimestamp")
         time_str = None
         if ts_str:
@@ -225,6 +350,14 @@ def fetch_one_patient_librelinkup(patient, threshold_low=70, threshold_high=180)
                 time_str = datetime.strptime(ts_str, "%m/%d/%Y %I:%M:%S %p").strftime("%H:%M:%S")
             except ValueError:
                 time_str = None
+
+        # Do liczenia wieku odczytu uzywamy FactoryTimestamp (zawsze UTC),
+        # a nie Timestamp - patrz komentarz w parse_llu_factory_timestamp_utc.
+        reading_dt_utc = parse_llu_factory_timestamp_utc(point.get("FactoryTimestamp"))
+        age_seconds = _age_seconds_from_utc(reading_dt_utc)
+        if age_seconds is not None and age_seconds > STALE_AFTER_SECONDS:
+            return build_stale_result(pid, name, time_str, age_seconds)
+
         return {
             "id": pid, "name": name, "value": value, "trend_arrow": arrow,
             "trend_description": "", "time": time_str, "status": "ok", "error": None,
@@ -271,28 +404,24 @@ def fetch_one_patient_nightscout(patient, threshold_low=70, threshold_high=180):
         entry = entries[0]
         value = entry.get("sgv")
         trend = entry.get("trend")
-        arrow = NS_TREND_ARROWS.get(trend, entry.get("direction", "") or "")
+        direction = entry.get("direction", "") or ""
+        arrow = NS_TREND_ARROWS.get(trend)
+        if arrow is None:
+            arrow = normalize_trend_arrow(direction)
         ts_ms = entry.get("date")
         time_str = datetime.fromtimestamp(ts_ms / 1000).strftime("%H:%M:%S") if ts_ms else None
 
         # Nightscout zawsze zwraca "ostatni jaki ma" wpis, nawet sprzed wielu godzin,
         # jesli sensor/telefon przestal wysylac dane. Sprawdzamy wiek odczytu i jesli
-        # jest starszy niz STALE_AFTER_SECONDS, oznaczamy kafelek jako "stale" (szary),
-        # zamiast pokazywac ewentualnie mylacy kolor normal/low/high z nieaktualnej liczby.
-        STALE_AFTER_SECONDS = 15 * 60
+        # jest starszy niz STALE_AFTER_SECONDS, ukrywamy wartosc cukru (kafelek "stale"),
+        # zamiast pokazywac ewentualnie mylaca, nieaktualna liczbe.
         age_seconds = (time.time() - ts_ms / 1000) if ts_ms else None
         if age_seconds is not None and age_seconds > STALE_AFTER_SECONDS:
-            age_minutes = int(age_seconds // 60)
-            return {
-                "id": pid, "name": name, "value": value, "trend_arrow": arrow,
-                "trend_description": entry.get("direction", ""), "time": time_str,
-                "status": "stale", "error": f"Nieaktualne dane - ostatni odczyt sprzed {age_minutes} min",
-                "category": "stale",
-            }
+            return build_stale_result(pid, name, time_str, age_seconds)
 
         return {
             "id": pid, "name": name, "value": value, "trend_arrow": arrow,
-            "trend_description": entry.get("direction", ""), "time": time_str,
+            "trend_description": direction, "time": time_str,
             "status": "ok", "error": None, "category": classify_glucose(value, threshold_low, threshold_high),
         }
     except Exception as exc:
@@ -366,9 +495,16 @@ def fetch_one_patient_carelink(patient, threshold_low=70, threshold_high=180):
         elif "lastSGTrend" in recent_data:
             roc = recent_data.get("lastSGTrend", "STABLE")
             arrow = CARELINK_TREND_ARROWS.get(roc, "→")
-            
-        # Wyciąganie czasu z pola 'timestamp'
-        ts_str = last_sg.get("timestamp") or datetime.now().strftime("%H:%M:%S")
+        arrow = normalize_trend_arrow(arrow) or "→"
+
+        # Wyciąganie czasu z pola 'timestamp' (zachowujemy pelna wersje do liczenia wieku odczytu)
+        raw_ts = last_sg.get("timestamp")
+        ts_str = raw_ts or datetime.now().strftime("%H:%M:%S")
+        # Parsujemy z uwzglednieniem strefy czasowej (patrz komentarz w
+        # parse_carelink_timestamp_utc) - poprzednio strefa byla po prostu
+        # obcinana, co przy odczytach w UTC ('Z') dawalo bledny (zawyzony
+        # o wartosc przesuniecia strefy) wiek odczytu.
+        reading_dt_utc = parse_carelink_timestamp_utc(raw_ts)
         if "T" in ts_str:
             try:
                 ts_str = ts_str.split("T")[1][:8]
@@ -388,6 +524,10 @@ def fetch_one_patient_carelink(patient, threshold_low=70, threshold_high=180):
                 "error": None,
                 "category": "unknown",
             }
+
+        age_seconds = _age_seconds_from_utc(reading_dt_utc)
+        if age_seconds is not None and age_seconds > STALE_AFTER_SECONDS:
+            return build_stale_result(pid, name, ts_str, age_seconds)
 
         return {
             "id": pid, "name": name, "value": value, "trend_arrow": arrow,
@@ -773,9 +913,24 @@ def fetch_one_patient(patient, threshold_low=70, threshold_high=180):
                 "trend_description": "", "time": None, "status": "no_data",
                 "error": "Brak aktualnych danych (sensor offline?)", "category": "unknown",
             }
+        time_str = reading.datetime.strftime("%H:%M:%S")
+        reading_dt = reading.datetime
+        if reading_dt.tzinfo is not None:
+            # Nowsze wersje pydexcom zwracaja reading.datetime ze
+            # swiadomoscia strefy czasowej (offset wziety z pola 'DT'
+            # zwracanego przez Dexcom Share API). Nie mozna go odjac
+            # bezposrednio od naiwnego datetime.now() - to powodowalo blad
+            # "can't subtract offset-naive and offset-aware datetimes".
+            # Sprowadzamy obie strony do UTC przed odejmowaniem.
+            age_seconds = (datetime.now(timezone.utc) - reading_dt.astimezone(timezone.utc)).total_seconds()
+        else:
+            age_seconds = (datetime.now() - reading_dt).total_seconds()
+        if age_seconds > STALE_AFTER_SECONDS:
+            return build_stale_result(pid, name, time_str, age_seconds)
+        arrow = normalize_trend_arrow(reading.trend_arrow) or normalize_trend_arrow(reading.trend_description)
         return {
-            "id": pid, "name": name, "value": reading.value, "trend_arrow": reading.trend_arrow,
-            "trend_description": reading.trend_description, "time": reading.datetime.strftime("%H:%M:%S"),
+            "id": pid, "name": name, "value": reading.value, "trend_arrow": arrow,
+            "trend_description": reading.trend_description, "time": time_str,
             "status": "ok", "error": None, "category": classify_glucose(reading.value, threshold_low, threshold_high),
         }
     except Exception as exc:
@@ -810,6 +965,8 @@ def dashboard():
         sound_low_url=url_for("static", filename="sounds/" + cfg.get("sound_low_file", "default_low.wav")),
         sound_high_url=url_for("static", filename="sounds/" + cfg.get("sound_high_file", "default_high.wav")),
         alert_repeat_seconds=cfg.get("alert_repeat_seconds", 15),
+        groups=cfg.get("groups", []),
+        card_font_scale=cfg.get("card_font_scale", 100),
     )
 
 
@@ -818,6 +975,8 @@ def data():
     cfg = load_config()
     order = [p["id"] for p in cfg.get("patients", [])]
     names = {p["id"]: p.get("name", "?") for p in cfg.get("patients", [])}
+    group_ids = {p["id"]: p.get("group_id", "") for p in cfg.get("patients", [])}
+    sources = {p["id"]: p.get("source", "dexcom") for p in cfg.get("patients", [])}
     with readings_lock:
         out = []
         for pid in order:
@@ -826,6 +985,9 @@ def data():
                 "trend_arrow": "", "status": "waiting", "error": "Oczekiwanie na pierwszy odczyt...",
                 "category": "unknown", "time": None, "updated_at": None,
             })
+            item = dict(item)
+            item["group_id"] = group_ids.get(pid, "")
+            item["source"] = sources.get(pid, "dexcom")
             out.append(item)
     return jsonify(out)
 
@@ -863,11 +1025,30 @@ def config_page():
     if request.method == "POST":
         action = request.form.get("action")
 
-        if action == "save_layout":
+        if action == "add_group":
+            group_name = request.form.get("group_name", "").strip()
+            if group_name:
+                cfg.setdefault("groups", []).append({"id": str(uuid.uuid4()), "name": group_name})
+                save_config(cfg)
+                message = f"Dodano grupe: {group_name}."
+            else:
+                message = "Podaj nazwe grupy."
+
+        elif action == "delete_group":
+            gid = request.form.get("group_id")
+            cfg["groups"] = [g for g in cfg.get("groups", []) if g["id"] != gid]
+            for p in cfg.get("patients", []):
+                if p.get("group_id") == gid:
+                    p["group_id"] = ""
+            save_config(cfg)
+            message = "Usunieto grupe."
+
+        elif action == "save_layout":
             cfg["columns"] = int(request.form.get("columns", cfg["columns"]))
             cfg["window_width"] = int(request.form.get("window_width", cfg["window_width"]))
             cfg["window_height"] = int(request.form.get("window_height", cfg["window_height"]))
             cfg["polling_interval_seconds"] = int(request.form.get("polling_interval_seconds", cfg["polling_interval_seconds"]))
+            cfg["card_font_scale"] = max(40, min(200, int(request.form.get("card_font_scale", cfg["card_font_scale"]))))
             save_config(cfg)
             message = "Zapisano ustawienia wygladu."
 
@@ -925,13 +1106,14 @@ def config_page():
         elif action == "add_patient":
             name = request.form.get("name", "").strip()
             source = request.form.get("source", "dexcom").strip() or "dexcom"
+            group_id = request.form.get("group_id", "").strip()
             
             if source == "carelink":
                 carelink_file = request.form.get("carelink_token_file", "").strip()
                 if name and carelink_file:
                     cfg["patients"].append({
                         "id": str(uuid.uuid4()), "name": name, "source": "carelink",
-                        "carelink_token_file": carelink_file
+                        "carelink_token_file": carelink_file, "group_id": group_id
                     })
                     save_config(cfg)
                     message = f"Dodano: {name} (CareLink)."
@@ -943,7 +1125,7 @@ def config_page():
                 if name and ns_url:
                     cfg["patients"].append({
                         "id": str(uuid.uuid4()), "name": name, "source": "nightscout",
-                        "nightscout_url": ns_url, "nightscout_token": ns_token,
+                        "nightscout_url": ns_url, "nightscout_token": ns_token, "group_id": group_id,
                     })
                     save_config(cfg)
                     message = f"Dodano: {name} (Nightscout)."
@@ -958,7 +1140,7 @@ def config_page():
                     entry = {
                         "id": str(uuid.uuid4()), "name": name, "source": "librelinkup",
                         "librelinkup_email": llu_email, "librelinkup_password": llu_password,
-                        "librelinkup_region": llu_region,
+                        "librelinkup_region": llu_region, "group_id": group_id,
                     }
                     if llu_patient_id:
                         entry["librelinkup_patient_id"] = llu_patient_id
@@ -974,12 +1156,21 @@ def config_page():
                 if name and login and password:
                     cfg["patients"].append({
                         "id": str(uuid.uuid4()), "name": name, "source": "dexcom",
-                        "login": login, "password": password, "region": region,
+                        "login": login, "password": password, "region": region, "group_id": group_id,
                     })
                     save_config(cfg)
                     message = f"Dodano: {name} (Dexcom)."
                 else:
                     message = "Uzupelnij imie, login i haslo."
+
+        elif action == "set_patient_group":
+            pid = request.form.get("patient_id")
+            gid = request.form.get("group_id", "").strip()
+            for p in cfg.get("patients", []):
+                if p["id"] == pid:
+                    p["group_id"] = gid
+            save_config(cfg)
+            message = "Zmieniono grupe dziecka."
 
         elif action == "delete_patient":
             pid = request.form.get("patient_id")
@@ -1000,48 +1191,56 @@ def config_page():
                         continue
                     parts = [p.strip() for p in line.split(",")]
                     
-                    # Format CareLink: carelink,<sciezka_do_pliku_tokenu>,<Imie>
+                    # Format CareLink: carelink,<sciezka_do_pliku_tokenu>,<Imie>,<grupa(opcjonalnie)>
                     if parts[0].lower() == "carelink" and len(parts) >= 3:
                         _, token_file, name = parts[0], parts[1], parts[2]
+                        group_name = parts[3] if len(parts) >= 4 else ""
                         if token_file and name:
                             cfg["patients"].append({
                                 "id": str(uuid.uuid4()), "name": name, "source": "carelink",
-                                "carelink_token_file": token_file
+                                "carelink_token_file": token_file,
+                                "group_id": get_or_create_group_id(cfg, group_name),
                             })
                             added += 1
                         continue
-                    # Format LibreLinkUp: librelinkup,<email>,<haslo>,<region>,<Imie>,<patient_id(opcjonalnie)>
+                    # Format LibreLinkUp: librelinkup,<email>,<haslo>,<region>,<Imie>,<patient_id(opcjonalnie)>,<grupa(opcjonalnie)>
                     if parts[0].lower() == "librelinkup" and len(parts) >= 5:
                         _, llu_email, llu_password, llu_region, name = parts[0], parts[1], parts[2], parts[3], parts[4]
                         llu_patient_id = parts[5] if len(parts) >= 6 else ""
+                        group_name = parts[6] if len(parts) >= 7 else ""
                         if llu_email and llu_password and name:
                             entry = {
                                 "id": str(uuid.uuid4()), "name": name, "source": "librelinkup",
                                 "librelinkup_email": llu_email, "librelinkup_password": llu_password,
                                 "librelinkup_region": llu_region or "eu",
+                                "group_id": get_or_create_group_id(cfg, group_name),
                             }
                             if llu_patient_id:
                                 entry["librelinkup_patient_id"] = llu_patient_id
                             cfg["patients"].append(entry)
                             added += 1
                         continue
-                    # Format Nightscout: nightscout,<url>,<token(moze byc puste)>,<Imie>
+                    # Format Nightscout: nightscout,<url>,<token(moze byc puste)>,<Imie>,<grupa(opcjonalnie)>
                     if parts[0].lower() == "nightscout" and len(parts) >= 4:
                         _, ns_url, ns_token, name = parts[0], parts[1], parts[2], parts[3]
+                        group_name = parts[4] if len(parts) >= 5 else ""
                         if ns_url and name:
                             cfg["patients"].append({
                                 "id": str(uuid.uuid4()), "name": name, "source": "nightscout",
                                 "nightscout_url": ns_url, "nightscout_token": ns_token,
+                                "group_id": get_or_create_group_id(cfg, group_name),
                             })
                             added += 1
                         continue
-                    # Format Dexcom (domyslny): login,haslo,Imie,region(opcjonalnie)
+                    # Format Dexcom (domyslny): login,haslo,Imie,region(opcjonalnie),grupa(opcjonalnie)
                     if len(parts) >= 3:
                         login, password, name = parts[0], parts[1], parts[2]
                         region = parts[3] if len(parts) >= 4 else "ous"
+                        group_name = parts[4] if len(parts) >= 5 else ""
                         cfg["patients"].append({
                             "id": str(uuid.uuid4()), "name": name, "source": "dexcom",
                             "login": login, "password": password, "region": region,
+                            "group_id": get_or_create_group_id(cfg, group_name),
                         })
                         added += 1
                 save_config(cfg)
