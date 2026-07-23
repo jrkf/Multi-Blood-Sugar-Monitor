@@ -319,13 +319,19 @@ def fetch_one_patient_carelink(patient, threshold_low=70, threshold_high=180):
             "trend_description": "", "time": None, "status": "error",
             "error": "Brak biblioteki carelink_client2 (zainstaluj z github)", "category": "unknown",
         }
-    token_file = patient.get("carelink_token_file", "").strip()
-    if not token_file:
+    raw_token_file = patient.get("carelink_token_file", "").strip()
+    if not raw_token_file:
         return {
             "id": pid, "name": name, "value": None, "trend_arrow": "",
             "trend_description": "", "time": None, "status": "error",
             "error": "Nie podano sciezki do pliku tokenu CareLink", "category": "unknown",
         }
+
+    # --- ZMIANA ŚCIEŻKI DO FOLDERU json_files ---
+    # Pobiera samą nazwę pliku z ciągu i dokleja folder "json_files"
+    filename_only = os.path.basename(raw_token_file)
+    token_file = os.path.join("json_files", filename_only)
+    # ---------------------------------------------
     try:
         # Inicjalizacja klienta
         client = carelink_client2.CareLinkClient(tokenFile=token_file)
