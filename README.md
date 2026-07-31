@@ -154,7 +154,7 @@ konta rodzinnego, jeśli to możliwe.
    -----------------------------------------------------------------
    To źródło jest najbardziej techniczne - wymaga wcześniejszego
    wygenerowania pliku z tokenem dostępu (logindata.json) przy pomocy
-   osobnego, jednorazowego narzędzia logującego do CareLink (UWAGA należy się logować do Carelink za pomocą konta dziecka!)
+   osobnego, jednorazowego narzędzia logującego do CareLink.
    (nie jest to zwykły login/hasło wpisywane w tym programie).
 
    Co przygotować PRZED wyjazdem (najlepiej z pomocą osoby ogarniętej
@@ -162,7 +162,7 @@ konta rodzinnego, jeśli to możliwe.
      a) Rodzic zakłada / posiada konto CarePartner w aplikacji
         "CareLink Connect" (Medtronic) i obserwuje tam dziecko.
      b) Za pomocą osobnego skryptu logującego (dołączanego do biblioteki
-        carelink_client2, np. carelink_carepartner_api_login.py) trzeba
+        carelink_client2) trzeba
         JEDNORAZOWO zalogować się danymi DZIECKA i wygenerować plik
         tokenu (zwykle nazwany logindata.json) zawierający access_token,
         refresh_token, mag-identifier itp. Program monitorujący
@@ -171,7 +171,7 @@ konta rodzinnego, jeśli to możliwe.
         znanym miejscu na komputerze) i podać do niego ŚCIEŻKĘ.
 
    Poproś rodzica o:
-     - dane logowania do konta CareLink Connect (login/hasło DZIECKA) - TYLKO
+     - dane logowania do konta CareLink Connect (login/hasło) - TYLKO
        po to, żeby osoba techniczna mogła jednorazowo wygenerować plik
        tokenu opisany wyżej. Same dane logowania NIE są wpisywane
        bezpośrednio do tego programu.
