@@ -154,7 +154,7 @@ konta rodzinnego, jeśli to możliwe.
    -----------------------------------------------------------------
    To źródło jest najbardziej techniczne - wymaga wcześniejszego
    wygenerowania pliku z tokenem dostępu (logindata.json) przy pomocy
-   osobnego, jednorazowego narzędzia logującego do CareLink Connect
+   osobnego, jednorazowego narzędzia logującego do CareLink (UWAGA należy się logować do Carelink za pomocą konta dziecka!)
    (nie jest to zwykły login/hasło wpisywane w tym programie).
 
    Co przygotować PRZED wyjazdem (najlepiej z pomocą osoby ogarniętej
