@@ -110,7 +110,11 @@
         <div id="carelink-fields" style="display:none;">
           <label>Ścieżka do pliku tokenu sesji CareLink (.json):</label>
           <input type="text" name="carelink_token_file" placeholder="np. jasiu_carelink.json">
-          <p class="hint">Wpisz nazwę pliku znajdującego się w folderze aplikacji lub pełną ścieżkę bezwzględną. Token generujesz wcześniej zewnętrznym skryptem 2FA.</p>
+          <p class="hint">Wpisz nazwę pliku znajdującego się w folderze aplikacji lub pełną ścieżkę bezwzględną. Token generujesz wcześniej zewnętrznym skryptem 2FA. Może to być token konta dziecka albo konta rodzica (opiekuna).</p>
+
+          <label>Nazwa użytkownika (username) dziecka w CareLink (opcjonalnie):</label>
+          <input type="text" name="carelink_patient_id" placeholder="opcjonalne, tylko dla tokenu rodzica z kilkorgiem dzieci">
+          <p class="hint">Wypełnij tylko jeśli powyższy token należy do konta rodzica (opiekuna) powiązanego z więcej niż jednym dzieckiem — wskazuje, którego dziecka dane pobrać. Przy jednym dziecku lub tokenie konta dziecka zostaw puste.</p>
         </div>
 
         <button type="submit" class="button">Dodaj</button>
@@ -135,8 +139,9 @@
         Dexcom: <code>login,haslo,imię_i_nazwisko,region(opcjonalnie),grupa(opcjonalnie)</code><br>
         Nightscout: <code>nightscout,adres_url,token(może być puste),imię_i_nazwisko,grupa(opcjonalnie)</code><br>
         LibreLinkUp: <code>librelinkup,email,hasło,region,imię_i_nazwisko,id_dziecka(opcjonalnie),grupa(opcjonalnie)</code><br>
-        CareLink: <code>carelink,nazwa_lub_sciezka_pliku_tokenu,imię_i_nazwisko,grupa(opcjonalnie)</code><br>
-        Przykład: <code>carelink,jasiu_token.json,Jan Kowalski,Młodsza grupa chłopców</code>
+        CareLink: <code>carelink,nazwa_lub_sciezka_pliku_tokenu,imię_i_nazwisko,grupa(opcjonalnie),username_dziecka(opcjonalnie, dla tokenu rodzica)</code><br>
+        Przykład (token dziecka): <code>carelink,jasiu_token.json,Jan Kowalski,Młodsza grupa chłopców</code><br>
+        Przykład (token rodzica, kilkoro dzieci): <code>carelink,rodzic_token.json,Jan Kowalski,Młodsza grupa chłopców,jasiu_carelink_username</code>
       </p>
       <form method="post" enctype="multipart/form-data">
         <input type="hidden" name="action" value="import_txt">

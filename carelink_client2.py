@@ -77,7 +77,7 @@ log.basicConfig(format=FORMAT, datefmt="%Y-%m-%d %H:%M:%S", level=log.INFO)
 ###########################################################
 class CareLinkClient(object):
    
-   def __init__(self, tokenFile=DEFAULT_FILENAME):
+   def __init__(self, tokenFile=DEFAULT_FILENAME, patientId=None):
       
       self.__version = VERSION
       
@@ -85,6 +85,12 @@ class CareLinkClient(object):
       self.__tokenFile = tokenFile
       self.__tokenData = None
       self.__accessTokenPayload = None
+
+      # Optional: username of the linked patient (child) to select when
+      # this token belongs to a carepartner (parent) account linked to
+      # more than one patient. If None, the first linked patient is used.
+      self.__wantedPatientId = patientId
+      self.__patientList = None
       
       # API config
       self.__config = None
@@ -208,7 +214,14 @@ class CareLinkClient(object):
       self.__last_api_status = resp.status_code
       log.debug("   status: %d" % resp.status_code)
       try:
-         patient = resp.json()[0]
+         patients = resp.json()
+         self.__patientList = patients
+         patient = patients[0]
+         if self.__wantedPatientId:
+            for p in patients:
+               if p.get("username") == self.__wantedPatientId:
+                  patient = p
+                  break
       except:
          patient = None
       return patient
@@ -422,6 +435,12 @@ class CareLinkClient(object):
             log.error("ERROR: unable to get data")
             return None
       return data
+
+   ###########################################################
+   # Get list of patients linked to this (carepartner/parent) account
+   ###########################################################
+   def getPatientList(self):
+      return self.__patientList
 
    ###########################################################
    # Get last API response code

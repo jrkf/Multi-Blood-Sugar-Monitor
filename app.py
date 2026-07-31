@@ -461,9 +461,15 @@ def fetch_one_patient_carelink(patient, threshold_low=70, threshold_high=180):
     filename_only = os.path.basename(raw_token_file)
     token_file = os.path.join("json_files", filename_only)
     # ---------------------------------------------
+
+    # --- OBSLUGA TOKENU RODZICA (CAREPARTNER) Z KILKORGIEM DZIECI ---
+    # Jesli token nalezy do konta rodzica powiazanego z wieloma dziecmi,
+    # pozwala wskazac konkretne dziecko po jego nazwie uzytkownika CareLink.
+    # Gdy nie podano, biblioteka bierze pierwsze powiazane dziecko.
+    carelink_patient_id = patient.get("carelink_patient_id", "").strip()
     try:
         # Inicjalizacja klienta
-        client = carelink_client2.CareLinkClient(tokenFile=token_file)
+        client = carelink_client2.CareLinkClient(tokenFile=token_file, patientId=carelink_patient_id or None)
         
         if not client.init():
             return {
@@ -1110,10 +1116,12 @@ def config_page():
             
             if source == "carelink":
                 carelink_file = request.form.get("carelink_token_file", "").strip()
+                carelink_patient_id = request.form.get("carelink_patient_id", "").strip()
                 if name and carelink_file:
                     cfg["patients"].append({
                         "id": str(uuid.uuid4()), "name": name, "source": "carelink",
-                        "carelink_token_file": carelink_file, "group_id": group_id
+                        "carelink_token_file": carelink_file,
+                        "carelink_patient_id": carelink_patient_id, "group_id": group_id
                     })
                     save_config(cfg)
                     message = f"Dodano: {name} (CareLink)."
@@ -1191,14 +1199,16 @@ def config_page():
                         continue
                     parts = [p.strip() for p in line.split(",")]
                     
-                    # Format CareLink: carelink,<sciezka_do_pliku_tokenu>,<Imie>,<grupa(opcjonalnie)>
+                    # Format CareLink: carelink,<sciezka_do_pliku_tokenu>,<Imie>,<grupa(opcjonalnie)>,<username_dziecka_dla_tokenu_rodzica(opcjonalnie)>
                     if parts[0].lower() == "carelink" and len(parts) >= 3:
                         _, token_file, name = parts[0], parts[1], parts[2]
                         group_name = parts[3] if len(parts) >= 4 else ""
+                        carelink_patient_id = parts[4] if len(parts) >= 5 else ""
                         if token_file and name:
                             cfg["patients"].append({
                                 "id": str(uuid.uuid4()), "name": name, "source": "carelink",
                                 "carelink_token_file": token_file,
+                                "carelink_patient_id": carelink_patient_id,
                                 "group_id": get_or_create_group_id(cfg, group_name),
                             })
                             added += 1
